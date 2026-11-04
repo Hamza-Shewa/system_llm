@@ -1,3 +1,7 @@
+## 0.1.1
+
+* License the package under MIT. 0.1.0 shipped without an open-source license.
+
 ## 0.1.0
 
 * Initial version: availability check, schema-constrained structured generation
