@@ -1,6 +1,8 @@
 ## 0.1.1
 
 * License the package under MIT. 0.1.0 shipped without an open-source license.
+* Declare Flutter 3.44.2 as the minimum, matching the Dart SDK the package
+  already required. The example app now declares the same SDK range.
 
 ## 0.1.0
 
