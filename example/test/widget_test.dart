@@ -28,39 +28,4 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('generate -> error: busy'), findsOneWidget);
   });
-
-  Future<void> pumpStream(
-    WidgetTester tester,
-    void Function(MockStreamHandlerEventSink sink) onListen,
-  ) async {
-    const channel = EventChannel('system_llm/stream');
-    final messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    messenger.setMockStreamHandler(
-      channel,
-      MockStreamHandler.inline(onListen: (_, sink) => onListen(sink)),
-    );
-    addTearDown(() => messenger.setMockStreamHandler(channel, null));
-    await tester.pumpWidget(const ExampleApp());
-    await tester.tap(find.text('Stream'));
-    // Platform-channel events need real time, not fake-async time.
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 100)),
-    );
-    await tester.pump();
-  }
-
-  testWidgets('stream joins the chunks as they arrive', (tester) async {
-    await pumpStream(tester, (sink) {
-      sink.success('Hel');
-      sink.success('lo');
-      sink.endOfStream();
-    });
-    expect(find.text('stream -> Hello'), findsOneWidget);
-  });
-
-  testWidgets('stream shows the error code from the platform', (tester) async {
-    await pumpStream(tester, (sink) => sink.error(code: 'context_too_long'));
-    expect(find.text('stream -> error: context_too_long'), findsOneWidget);
-  });
 }

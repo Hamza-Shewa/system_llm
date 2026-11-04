@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'system_llm'
-  s.version          = '0.0.1'
+  s.version          = '0.1.1'
   s.summary          = 'Flutter bridge to the OS built-in language model and on-device speech.'
   s.description      = <<-DESC
 Structured and streamed generation with Apple Foundation Models, plus on-device speech recognition.
@@ -15,6 +15,9 @@ Structured and streamed generation with Apple Foundation Models, plus on-device 
   s.source           = { :path => '.' }
   s.source_files = 'system_llm/Sources/system_llm/**/*'
   s.dependency 'Flutter'
+  # Older iOS versions have no Foundation Models; the code checks availability.
+  s.weak_frameworks = 'FoundationModels'
+  s.resource_bundles = { 'system_llm_privacy' => ['system_llm/Sources/system_llm/PrivacyInfo.xcprivacy'] }
   s.platform = :ios, '15.0'
 
   # Flutter.framework does not contain a i386 slice.

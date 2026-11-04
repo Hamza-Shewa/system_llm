@@ -105,7 +105,9 @@ class SystemLlmPlugin :
     private suspend fun modelStatus(): String {
         modelCreated = true
         return when (model.checkStatus()) {
-            FeatureStatus.AVAILABLE -> if (model.isStructuredOutputFeatureAvailable()) "available" else "unsupported"
+            // Structured output is prompted for and validated here, so ML Kit's
+            // own structured-output feature is not required.
+            FeatureStatus.AVAILABLE -> "available"
             FeatureStatus.DOWNLOADING, FeatureStatus.DOWNLOADABLE -> "model_not_ready"
             else -> "unsupported"
         }
