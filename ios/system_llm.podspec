@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'system_llm'
-  s.version          = '0.1.1'
+  s.version          = '0.1.0'
   s.summary          = 'Flutter bridge to the OS built-in language model and on-device speech.'
   s.description      = <<-DESC
 Structured and streamed generation with Apple Foundation Models, plus on-device speech recognition.
