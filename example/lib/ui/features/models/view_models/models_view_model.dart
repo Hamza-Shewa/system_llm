@@ -66,7 +66,9 @@ class ModelsViewModel extends ChangeNotifier {
         final key = await _keyStore.read(provider.id);
         if (key != null && key.isNotEmpty) _withKey.add(provider.id);
       }
-    } on Object {
+    } on Object catch (error) {
+      // Settings hold no secrets, so the error is safe to log.
+      debugPrint('Model settings could not be loaded: $error');
       _loadFailed = true;
     }
     _loading = false;

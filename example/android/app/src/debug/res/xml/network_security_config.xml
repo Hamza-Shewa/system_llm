@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: also allow plain HTTP to a model server elsewhere on
+     the LAN (Android cannot list IP ranges). The package itself still
+     refuses plain HTTP to public hosts. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
