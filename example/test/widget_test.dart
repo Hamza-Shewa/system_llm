@@ -1,7 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_llm/system_llm.dart';
-import 'package:system_llm_example/main.dart';
+import 'package:flutter/material.dart';
+import 'package:system_llm_example/ui/features/console/views/console_page.dart';
 
 void main() {
   testWidgets('shows the outcome of a call, including plugin errors', (
@@ -16,7 +17,7 @@ void main() {
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    await tester.pumpWidget(const ExampleApp());
+    await tester.pumpWidget(const MaterialApp(home: ConsolePage()));
     await tester.tap(find.text('Availability'));
     await tester.pumpAndSettle();
     expect(
