@@ -47,3 +47,6 @@ RecordingClient respond(FutureOr<http.Response> Function(http.Request) fn) =>
         response.statusCode,
       );
     });
+
+/// [jsonEncode] without whitespace, for building SSE lines.
+String jsonEncodeCompact(Object? value) => jsonEncode(value);

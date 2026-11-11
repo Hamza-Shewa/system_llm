@@ -11,6 +11,7 @@ import '../providers/provider_config.dart';
 import 'http_transport.dart';
 import 'sse.dart';
 
+part 'anthropic_model.dart';
 part 'openai_compatible_model.dart';
 
 /// A [LanguageModel] served over HTTP by a third-party provider or a local
@@ -42,7 +43,12 @@ sealed class RemoteLanguageModel implements LanguageModel {
       client: client,
       timeout: timeout,
     ),
-    ProviderProtocol.anthropic => throw UnimplementedError(),
+    ProviderProtocol.anthropic => AnthropicModel(
+      config: config,
+      apiKey: apiKey,
+      client: client,
+      timeout: timeout,
+    ),
   };
 
   final ProviderConfig config;
@@ -63,10 +69,13 @@ sealed class RemoteLanguageModel implements LanguageModel {
   @override
   bool get isOnDevice => false;
 
+  /// Path of the model listing, relative to [ProviderConfig.baseUrl].
+  String get _modelsPath => '/models';
+
   /// Model identifiers the provider serves, sorted.
   Future<List<String>> listModels({Duration? timeout}) async {
     final json = await _transport.getJson(
-      config.endpoint('/models'),
+      config.endpoint(_modelsPath),
       _headers,
       timeout: timeout,
     );
