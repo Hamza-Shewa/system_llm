@@ -130,6 +130,63 @@ void main() {
     expect(find.text('Retry'), findsNothing);
   });
 
+  testWidgets('keeps the partial answer next to the error', (tester) async {
+    model.onStream = (_) async* {
+      yield 'Half an ans';
+      throw const SystemLlmException(SystemLlmException.network);
+    };
+    await pump(tester);
+    await type(tester, 'q');
+    await tester.pumpAndSettle();
+    expect(find.text('Half an ans'), findsOneWidget);
+    expect(
+      find.text(
+        'Could not reach the provider. Check the connection and the address.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('offers Retry after stopping before any answer', (tester) async {
+    final controller = StreamController<String>();
+    model.onStream = (_) => controller.stream;
+    await pump(tester);
+    await type(tester, 'q');
+    await tester.tap(find.byTooltip('Stop'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stopped before an answer.'), findsOneWidget);
+    model.onStream = (_) => Stream.value('now');
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(find.text('now'), findsOneWidget);
+    unawaited(controller.close());
+  });
+
+  testWidgets('keeps typed text that cannot be sent while answering', (
+    tester,
+  ) async {
+    final controller = StreamController<String>();
+    model.onStream = (_) => controller.stream;
+    await pump(tester);
+    await type(tester, 'first');
+    await tester.enterText(find.widgetWithText(TextField, 'Message'), 'second');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+    expect(find.text('second'), findsOneWidget);
+    expect(chat.messages, const [AiMessage.user('first')]);
+    unawaited(controller.close());
+  });
+
+  testWidgets('tells screen readers who wrote each message', (tester) async {
+    model.onStream = (_) => Stream.value('Hi');
+    await pump(tester);
+    await type(tester, 'Hello');
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel(RegExp('^You')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('^Assistant')), findsOneWidget);
+  });
+
   testWidgets('clears the conversation', (tester) async {
     model.onStream = (_) => Stream.value('answer');
     await pump(tester);

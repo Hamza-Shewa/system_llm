@@ -28,7 +28,8 @@ class _ChatPageState extends State<ChatPage> {
 
   void _send() {
     final text = _input.text;
-    if (text.trim().isEmpty) return;
+    // Keep what was typed when it cannot be sent yet.
+    if (text.trim().isEmpty || widget.viewModel.streaming) return;
     _input.clear();
     widget.viewModel.send(text);
   }
@@ -66,6 +67,12 @@ class _ChatPageState extends State<ChatPage> {
               _ErrorBar(
                 message: errorMessage(code),
                 onRetry: chat.canRetry ? chat.retry : null,
+              )
+            else if (chat.canRetry)
+              _ErrorBar(
+                message: 'Stopped before an answer.',
+                onRetry: chat.retry,
+                quiet: true,
               ),
             _Composer(
               controller: _input,
@@ -214,40 +221,48 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final mine = message.role == AiRole.user;
-    return Align(
-      alignment: mine
-          ? AlignmentDirectional.centerEnd
-          : AlignmentDirectional.centerStart,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.85,
-        ),
-        child: Container(
-          margin: const EdgeInsetsDirectional.symmetric(vertical: 4),
-          padding: const EdgeInsetsDirectional.symmetric(
-            horizontal: 14,
-            vertical: 10,
+    // Alignment and colour alone do not tell a screen reader who wrote it.
+    return Semantics(
+      container: true,
+      label: mine ? 'You' : 'Assistant',
+      child: Align(
+        alignment: mine
+            ? AlignmentDirectional.centerEnd
+            : AlignmentDirectional.centerStart,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.85,
           ),
-          decoration: BoxDecoration(
-            color: mine ? scheme.primaryContainer : scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: pending && message.text.isEmpty
-              ? Semantics(
-                  label: 'Waiting for the answer',
-                  child: SizedBox(
-                    width: 32,
-                    child: LinearProgressIndicator(
-                      borderRadius: BorderRadius.circular(2),
+          child: Container(
+            margin: const EdgeInsetsDirectional.symmetric(vertical: 4),
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: 14,
+              vertical: 10,
+            ),
+            decoration: BoxDecoration(
+              color: mine ? scheme.primaryContainer : scheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: pending && message.text.isEmpty
+                ? Semantics(
+                    container: true,
+                    label: 'Waiting for the answer',
+                    child: SizedBox(
+                      width: 32,
+                      child: LinearProgressIndicator(
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  )
+                : SelectableText(
+                    message.text,
+                    style: TextStyle(
+                      color: mine
+                          ? scheme.onPrimaryContainer
+                          : scheme.onSurface,
                     ),
                   ),
-                )
-              : SelectableText(
-                  message.text,
-                  style: TextStyle(
-                    color: mine ? scheme.onPrimaryContainer : scheme.onSurface,
-                  ),
-                ),
+          ),
         ),
       ),
     );
@@ -255,31 +270,43 @@ class _Bubble extends StatelessWidget {
 }
 
 class _ErrorBar extends StatelessWidget {
-  const _ErrorBar({required this.message, this.onRetry});
+  const _ErrorBar({required this.message, this.onRetry, this.quiet = false});
 
   final String message;
   final VoidCallback? onRetry;
 
+  /// A neutral notice rather than an error.
+  final bool quiet;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: scheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 8, 8),
-        child: Row(
-          children: [
-            Icon(Icons.error_outline, color: scheme.onErrorContainer),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                message,
-                style: TextStyle(color: scheme.onErrorContainer),
+    final background = quiet
+        ? scheme.surfaceContainerHighest
+        : scheme.errorContainer;
+    final foreground = quiet
+        ? scheme.onSurfaceVariant
+        : scheme.onErrorContainer;
+    return Semantics(
+      liveRegion: true,
+      child: Material(
+        color: background,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 8, 8),
+          child: Row(
+            children: [
+              Icon(
+                quiet ? Icons.info_outline : Icons.error_outline,
+                color: foreground,
               ),
-            ),
-            if (onRetry != null)
-              TextButton(onPressed: onRetry, child: const Text('Retry')),
-          ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(message, style: TextStyle(color: foreground)),
+              ),
+              if (onRetry != null)
+                TextButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ),
         ),
       ),
     );

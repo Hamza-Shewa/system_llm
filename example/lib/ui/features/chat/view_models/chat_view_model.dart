@@ -30,6 +30,11 @@ class ChatViewModel extends ChangeNotifier {
   StreamSubscription<String>? _subscription;
   LanguageModel? _active;
 
+  /// Bumped by stop, clear and dispose, so an answer whose model is still
+  /// being chosen knows it was abandoned.
+  int _run = 0;
+  bool _disposed = false;
+
   List<AiMessage> get messages => List.unmodifiable(_messages);
 
   /// The answer so far while [streaming].
@@ -39,58 +44,87 @@ class ChatViewModel extends ChangeNotifier {
   /// [SystemLlmException] code of the last failure, cleared on the next send.
   String? get errorCode => _errorCode;
 
-  /// Whether the last message still waits for an answer (after an error).
+  /// Whether the last question can be asked again: it got no answer (an
+  /// error, or Stop before any text), or its answer failed part-way.
   bool get canRetry =>
-      !_streaming && _messages.isNotEmpty && _messages.last.role == AiRole.user;
+      !_streaming &&
+      _messages.isNotEmpty &&
+      (_messages.last.role == AiRole.user || _errorCode != null);
 
-  Future<void> send(String text) async {
+  /// Sends [text]; false when it was not accepted (blank, or an answer is
+  /// still running), so the caller can keep what the user typed.
+  Future<bool> send(String text) async {
     final message = text.trim();
-    if (message.isEmpty || _streaming) return;
+    if (message.isEmpty || _streaming || _disposed) return false;
     _messages.add(AiMessage.user(message));
     await _answer();
+    return true;
   }
 
   Future<void> retry() async {
-    if (canRetry) await _answer();
+    if (!canRetry) return;
+    // A partial answer from the failed attempt is replaced, not kept.
+    if (_messages.last.role == AiRole.assistant) _messages.removeLast();
+    await _answer();
   }
 
   Future<void> _answer() async {
+    final run = ++_run;
     _errorCode = null;
     _partial = '';
     _streaming = true;
-    notifyListeners();
+    _notify();
     final LanguageModel model;
     try {
       model = await _resolve(models.settings);
     } on SystemLlmException catch (error) {
-      _finish(error: error.code);
+      if (run == _run) _finish(error: error.code);
+      return;
+    } on Object catch (error) {
+      debugPrint('Could not choose the model: $error');
+      if (run == _run) _finish(error: SystemLlmException.generationFailed);
+      return;
+    }
+    if (run != _run) {
+      // Stopped, cleared or disposed while the model was being chosen.
+      _release(model);
       return;
     }
     _active = model;
-    _subscription = model
-        .streamText(
-          instructions: instructions,
-          messages: List.of(_messages),
-          maxTokens: maxTokens,
-        )
-        .listen(
-          (chunk) {
-            _partial += chunk;
-            notifyListeners();
-          },
-          onError: (Object error) => _finish(
-            error: error is SystemLlmException
-                ? error.code
-                : SystemLlmException.generationFailed,
-          ),
-          onDone: _finish,
-          cancelOnError: true,
-        );
+    final Stream<String> answer;
+    try {
+      answer = model.streamText(
+        instructions: instructions,
+        messages: List.of(_messages),
+        maxTokens: maxTokens,
+      );
+    } on Object catch (error) {
+      _finish(
+        error: error is SystemLlmException
+            ? error.code
+            : SystemLlmException.generationFailed,
+      );
+      return;
+    }
+    _subscription = answer.listen(
+      (chunk) {
+        _partial += chunk;
+        _notify();
+      },
+      onError: (Object error) => _finish(
+        error: error is SystemLlmException
+            ? error.code
+            : SystemLlmException.generationFailed,
+      ),
+      onDone: _finish,
+      cancelOnError: true,
+    );
   }
 
   /// Stops the answer; the text received so far is kept.
   Future<void> stop() async {
     if (!_streaming) return;
+    _run++;
     final subscription = _subscription;
     final model = _active;
     _finish();
@@ -103,7 +137,7 @@ class ChatViewModel extends ChangeNotifier {
     await stop();
     _messages.clear();
     _errorCode = null;
-    notifyListeners();
+    _notify();
   }
 
   void _finish({String? error}) {
@@ -115,13 +149,25 @@ class ChatViewModel extends ChangeNotifier {
     _subscription = null;
     final model = _active;
     _active = null;
+    if (model != null) _release(model);
+    _notify();
+  }
+
+  void _release(LanguageModel model) {
     if (model is RemoteLanguageModel) model.close();
-    notifyListeners();
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _run++;
     unawaited(_subscription?.cancel());
+    final model = _active;
+    if (model != null) _release(model);
     super.dispose();
   }
 }

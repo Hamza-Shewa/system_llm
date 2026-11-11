@@ -103,7 +103,6 @@ void main() {
     await pumpEventQueue();
     expect(chat.errorCode, SystemLlmException.timeout);
     expect(chat.messages.last, const AiMessage.assistant('part'));
-    expect(chat.canRetry, isFalse);
   });
 
   test('stop keeps the partial answer and cancels the model', () async {
@@ -131,6 +130,87 @@ void main() {
     await chat.send('one');
     await chat.send('two');
     expect(chat.messages, const [AiMessage.user('one')]);
+  });
+
+  group('stop, clear or dispose while the model is being chosen', () {
+    late Completer<LanguageModel> pending;
+
+    setUp(() {
+      pending = Completer<LanguageModel>();
+      chat = ChatViewModel(models: models, resolve: (_) => pending.future);
+      onDevice.onStream = (_) => Stream.value('late');
+    });
+
+    test('stop: no answer starts afterwards', () async {
+      final sending = chat.send('hi');
+      await chat.stop();
+      pending.complete(onDevice);
+      await sending;
+      await pumpEventQueue();
+      expect(onDevice.streamRequests, isEmpty);
+      expect(chat.streaming, isFalse);
+      expect(chat.messages, const [AiMessage.user('hi')]);
+    });
+
+    test('clear: no answer starts afterwards', () async {
+      final sending = chat.send('hi');
+      await chat.clear();
+      pending.complete(onDevice);
+      await sending;
+      await pumpEventQueue();
+      expect(onDevice.streamRequests, isEmpty);
+      expect(chat.messages, isEmpty);
+    });
+
+    test('dispose: nothing runs or notifies afterwards', () async {
+      final sending = chat.send('hi');
+      chat.dispose();
+      pending.complete(onDevice);
+      await sending;
+      await pumpEventQueue();
+      expect(onDevice.streamRequests, isEmpty);
+    });
+  });
+
+  test('any failure while choosing the model is reported', () async {
+    chat = ChatViewModel(
+      models: models,
+      resolve: (_) async => throw StateError('keychain locked'),
+    );
+    await chat.send('hi');
+    expect(chat.streaming, isFalse);
+    expect(chat.errorCode, SystemLlmException.generationFailed);
+    expect(chat.canRetry, isTrue);
+  });
+
+  test('send reports whether the message was accepted', () async {
+    final controller = StreamController<String>();
+    addTearDown(controller.close);
+    onDevice.onStream = (_) => controller.stream;
+    expect(await chat.send('one'), isTrue);
+    expect(await chat.send('two'), isFalse);
+    expect(await chat.send('  '), isFalse);
+  });
+
+  test('retry after an error replaces the partial answer', () async {
+    var attempt = 0;
+    onDevice.onStream = (_) async* {
+      if (attempt++ == 0) {
+        yield 'par';
+        throw const SystemLlmException(SystemLlmException.network);
+      }
+      yield 'full answer';
+    };
+    await chat.send('hi');
+    await pumpEventQueue();
+    expect(chat.canRetry, isTrue);
+    await chat.retry();
+    await pumpEventQueue();
+    expect(chat.messages, const [
+      AiMessage.user('hi'),
+      AiMessage.assistant('full answer'),
+    ]);
+    expect(onDevice.streamRequests.last, const [AiMessage.user('hi')]);
   });
 
   test('clear empties the conversation', () async {
