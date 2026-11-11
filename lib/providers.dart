@@ -9,6 +9,9 @@ library;
 import 'system_llm.dart';
 
 export 'system_llm.dart';
+export 'src/providers/model_resolver.dart';
+export 'src/providers/model_settings.dart';
 export 'src/providers/provider_config.dart';
+export 'src/providers/provider_presets.dart';
 export 'src/remote/remote_model.dart'
     show RemoteLanguageModel, OpenAiCompatibleModel, AnthropicModel;
