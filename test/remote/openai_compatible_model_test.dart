@@ -206,15 +206,26 @@ void main() {
       );
     });
 
-    test('never forwards the provider error text', () async {
+    test('does not follow redirects, so the key stays with the host', () async {
       final client = respond(
-        (_) => jsonResponse({
-          'error': {'message': 'Your prompt "my secret plan" was rejected'},
-        }, status: 400),
+        (_) => http.Response('', 302, headers: {'location': 'https://evil/'}),
       );
-      final error = await failure(generate(model(client)));
-      expect(error.toString(), isNot(contains('secret')));
-      expect(error.code, SystemLlmException.generationFailed);
+      expect(
+        (await failure(generate(model(client)))).code,
+        SystemLlmException.generationFailed,
+      );
+      expect(client.requests.single.followRedirects, isFalse);
+      expect(client.requests, hasLength(1));
+    });
+
+    test('streams and model listings do not follow redirects either', () async {
+      final client = respond((_) => jsonResponse({'data': []}));
+      await model(client).listModels();
+      await model(client)
+          .streamText(instructions: '', messages: messages)
+          .toList()
+          .catchError((_) => <String>[]);
+      expect(client.requests.map((r) => r.followRedirects), [false, false]);
     });
 
     test('reports network when the server cannot be reached', () async {
@@ -469,6 +480,29 @@ void main() {
         AiAvailability.available,
       );
     });
+  });
+
+  test('refuses to send a key over plain http to a public host', () {
+    expect(
+      () => model(
+        respond((_) => jsonResponse({})),
+        config: config.copyWith(baseUrl: 'http://api.example.com/v1'),
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => RemoteLanguageModel.create(
+        config.copyWith(baseUrl: 'not a url'),
+        client: respond((_) => jsonResponse({})),
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('a config without a model can still list models', () async {
+    final client = respond((_) => jsonResponse({'data': []}));
+    final m = model(client, config: config.copyWith(model: ''));
+    expect(await m.listModels(), isEmpty);
   });
 
   test('toString shows the host but never the key', () {

@@ -187,11 +187,11 @@ final class HttpTransport {
     Map<String, Object?>? body,
     _Call call,
   ) {
-    final request = http.AbortableRequest(
-      method,
-      url,
-      abortTrigger: call.trigger.future,
-    )..headers.addAll(headers);
+    final request =
+        http.AbortableRequest(method, url, abortTrigger: call.trigger.future)
+          ..headers.addAll(headers)
+          // A redirect would carry the API key header to another host.
+          ..followRedirects = false;
     if (body != null) {
       request
         ..headers['content-type'] = 'application/json'

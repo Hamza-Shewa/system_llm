@@ -26,7 +26,21 @@ sealed class RemoteLanguageModel implements LanguageModel {
     required this._headers,
     http.Client? client,
     Duration timeout = const Duration(seconds: 90),
-  }) : _transport = HttpTransport(client: client, timeout: timeout);
+  }) : _transport = HttpTransport(client: client, timeout: timeout) {
+    final urlErrors = config.validate().where(
+      (error) =>
+          error == ProviderConfigError.baseUrlInvalid ||
+          error == ProviderConfigError.insecureBaseUrl,
+    );
+    if (urlErrors.isNotEmpty) {
+      throw ArgumentError.value(
+        config.baseUrl,
+        'config.baseUrl',
+        'Needs https, or http to a loopback or private host '
+            '(${urlErrors.first.name}).',
+      );
+    }
+  }
 
   /// The adapter for [config]'s protocol. [apiKey] may be null for servers
   /// that need none (a local Ollama). Pass a shared [client] to reuse

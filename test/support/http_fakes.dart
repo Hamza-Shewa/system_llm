@@ -32,6 +32,7 @@ class RecordingClient extends http.BaseClient {
     final bytes = await request.finalize().toBytes();
     final copy = http.Request(request.method, request.url)
       ..headers.addAll(request.headers)
+      ..followRedirects = request.followRedirects
       ..bodyBytes = bytes;
     requests.add(copy);
     return handler(copy);

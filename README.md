@@ -107,9 +107,12 @@ key is needed and a few suggested models. Model names change often, so offer
 Any other server that speaks `POST /chat/completions` works as a custom
 `ProviderConfig`. Notes:
 
-* **Security.** `ProviderConfig.validate()` refuses plain `http://` to public
-  hosts; it is only accepted for loopback and private-network addresses.
-  Provider error text is never forwarded, only the stable `code`.
+* **Security.** Plain `http://` is refused for public hosts, both by
+  `ProviderConfig.validate()` and when a remote model is constructed; it is
+  only accepted for loopback, private-network (including carrier-grade NAT
+  such as Tailscale and IPv6 unique-local) and `.local` hosts. Redirects are
+  not followed, so the API key never travels to another host. Provider error
+  text is never forwarded, only the stable `code`.
 * **Structured output.** OpenAI-compatible providers use `json_schema`,
   `json_object` or the schema in the prompt (per preset); Anthropic uses JSON
   outputs (`output_config.format`). Every answer is validated against the

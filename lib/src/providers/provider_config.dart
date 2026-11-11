@@ -136,29 +136,69 @@ final class ProviderConfig {
     ];
   }
 
-  /// Whether [host] is loopback, link-local or on a private network, where
-  /// plain HTTP is acceptable for a local model server.
+  /// Whether [host] is loopback, link-local, on a private network (RFC 1918,
+  /// carrier-grade NAT such as Tailscale, IPv6 unique-local) or a local name,
+  /// where plain HTTP is acceptable for a local model server.
+  ///
+  /// IPv4 octets must be plain decimal: resolvers read a leading zero as
+  /// octal, so `010.0.0.1` is really the public `8.0.0.1`.
   static bool isPrivateHost(String host) {
-    final name = host.toLowerCase();
+    var name = host.toLowerCase();
+    if (name.endsWith('.')) name = name.substring(0, name.length - 1);
     if (name == 'localhost' ||
         name.endsWith('.localhost') ||
-        name.endsWith('.local') ||
-        name == '::1') {
+        name.endsWith('.local')) {
       return true;
     }
+    if (name.contains(':')) return _isPrivateIPv6(name);
+    final octets = _ipv4Octets(name);
+    return octets != null && _isPrivateIPv4(octets);
+  }
+
+  static List<int>? _ipv4Octets(String name) {
     final parts = name.split('.');
-    if (parts.length != 4) return false;
-    final octets = parts.map(int.tryParse).toList();
-    if (octets.any((octet) => octet == null || octet < 0 || octet > 255)) {
-      return false;
+    if (parts.length != 4) return null;
+    final octets = <int>[];
+    for (final part in parts) {
+      final valid =
+          part.isNotEmpty &&
+          part.length <= 3 &&
+          part.codeUnits.every((c) => c >= 0x30 && c <= 0x39) &&
+          (part.length == 1 || !part.startsWith('0'));
+      if (!valid) return null;
+      final value = int.parse(part);
+      if (value > 255) return null;
+      octets.add(value);
     }
-    final a = octets[0]!;
-    final b = octets[1]!;
+    return octets;
+  }
+
+  static bool _isPrivateIPv4(List<int> octets) {
+    final [a, b, ...] = octets;
     return a == 127 ||
         a == 10 ||
         (a == 192 && b == 168) ||
         (a == 172 && b >= 16 && b <= 31) ||
-        (a == 169 && b == 254);
+        (a == 169 && b == 254) ||
+        (a == 100 && b >= 64 && b <= 127);
+  }
+
+  static bool _isPrivateIPv6(String name) {
+    final List<int> bytes;
+    try {
+      bytes = Uri.parseIPv6Address(name);
+    } on FormatException {
+      return false;
+    }
+    final zeroPrefix = bytes.take(10).every((b) => b == 0);
+    if (zeroPrefix && bytes.skip(10).take(5).every((b) => b == 0)) {
+      return bytes[15] == 1; // ::1
+    }
+    if (zeroPrefix && bytes[10] == 0xff && bytes[11] == 0xff) {
+      return _isPrivateIPv4(bytes.sublist(12)); // ::ffff:a.b.c.d
+    }
+    return (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) || // fe80::/10
+        (bytes[0] & 0xfe) == 0xfc; // fc00::/7
   }
 
   ProviderConfig copyWith({

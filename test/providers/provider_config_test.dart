@@ -86,6 +86,12 @@ void main() {
         'http://8.8.8.8/v1',
         'http://172.32.0.1/v1',
         'http://192.169.1.1/v1',
+        // Leading zeros are octal to the resolver: 010 is 8, 016 is 14.
+        'http://010.0.0.1/v1',
+        'http://172.016.0.1/v1',
+        'http://+10.0.0.1/v1',
+        'http://[2001:db8::1]/v1',
+        'http://[::ffff:8.8.8.8]/v1',
       ]) {
         expect(withUrl(url).validate(), [
           ProviderConfigError.insecureBaseUrl,
@@ -102,6 +108,12 @@ void main() {
         'http://172.16.0.5/v1',
         'http://[::1]:11434/v1',
         'http://studio.local:1234/v1',
+        'http://localhost.:11434/v1',
+        'http://[0:0:0:0:0:0:0:1]:11434/v1',
+        'http://[fe80::1]/v1',
+        'http://[fd12:3456::1]/v1',
+        'http://[::ffff:127.0.0.1]/v1',
+        'http://100.100.1.2/v1',
       ]) {
         expect(withUrl(url).validate(), isEmpty, reason: url);
       }
