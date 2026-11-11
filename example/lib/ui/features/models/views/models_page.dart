@@ -14,15 +14,16 @@ class ModelsPage extends StatelessWidget {
 
   Future<void> _guard(
     BuildContext context,
-    Future<void> Function() action,
-  ) async {
+    Future<void> Function() action, {
+    String failure = 'Could not save the change. Try again.',
+  }) async {
     try {
       await action();
     } on Object {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save the change. Try again.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(failure)));
     }
   }
 
@@ -138,7 +139,11 @@ class ModelsPage extends StatelessWidget {
                           availability: viewModel.availabilityOf(provider.id),
                           checking: viewModel.isChecking(provider.id),
                           onEdit: () => _openEditor(context, provider),
-                          onCheck: () => viewModel.check(provider),
+                          onCheck: () => _guard(
+                            context,
+                            () => viewModel.check(provider),
+                            failure: 'Could not check the connection.',
+                          ),
                           onDelete: () => _confirmDelete(context, provider),
                         ),
                     ],

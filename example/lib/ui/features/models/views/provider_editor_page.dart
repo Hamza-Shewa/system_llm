@@ -32,6 +32,7 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
   var _maxTokensField = MaxTokensField.maxTokens;
 
   var _obscureKey = true;
+  var _removeKey = false;
   var _submitted = false;
   var _saving = false;
   var _testing = false;
@@ -71,6 +72,8 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
   void _applyPreset(ProviderPreset? preset) {
     _preset = preset;
     _testResult = null;
+    // A key typed for one provider must never go to another.
+    _apiKey.clear();
     if (preset == null) {
       _name.text = '';
       _baseUrl.text = 'https://';
@@ -100,13 +103,33 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
     maxTokensField: _maxTokensField,
   );
 
-  /// The key typed in the field; null keeps the saved one.
+  /// The key typed in the field, if any.
   String? get _typedKey => _apiKey.text.trim().isEmpty ? null : _apiKey.text;
 
+  static String _origin(String url) {
+    final uri = Uri.tryParse(url.trim());
+    return uri == null ? url.trim() : '${uri.scheme}://${uri.host}:${uri.port}';
+  }
+
+  /// The saved key belongs to the original address and protocol; once either
+  /// changes it is not sent anywhere.
+  bool get _addressChanged {
+    final initial = widget.initial;
+    return initial != null &&
+        (_origin(initial.baseUrl) != _origin(_baseUrl.text) ||
+            initial.protocol != _protocol);
+  }
+
+  bool get _hasSavedKey => widget.viewModel.hasSavedKey(_id);
+
+  bool get _usesSavedKey => _hasSavedKey && !_removeKey && !_addressChanged;
+
+  /// What to use as the key: the typed one; null to use the saved one; or
+  /// empty for none (which also removes a saved key on save).
+  String? get _keyToUse => _typedKey ?? (_usesSavedKey ? null : '');
+
   bool get _keyMissing =>
-      (_preset?.requiresApiKey ?? false) &&
-      _typedKey == null &&
-      !widget.viewModel.hasSavedKey(_id);
+      (_preset?.requiresApiKey ?? false) && _typedKey == null && !_usesSavedKey;
 
   List<ProviderConfigError> get _errors => _draft.validate();
 
@@ -121,7 +144,7 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
     if (_errors.isNotEmpty || _keyMissing) return;
     setState(() => _saving = true);
     try {
-      await widget.viewModel.saveProvider(_draft, apiKey: _typedKey);
+      await widget.viewModel.saveProvider(_draft, apiKey: _keyToUse);
       if (mounted) Navigator.of(context).pop();
     } on Object {
       if (!mounted) return;
@@ -139,11 +162,22 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
       _testing = true;
       _testResult = null;
     });
-    final result = await widget.viewModel.check(_draft, apiKey: _typedKey);
+    final draft = _draft;
+    AiAvailability? result;
+    try {
+      result = await widget.viewModel.check(draft, apiKey: _keyToUse);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not check the connection.')),
+        );
+      }
+    }
     if (!mounted) return;
     setState(() {
       _testing = false;
-      _testResult = result;
+      // A result for fields the user has since changed would mislead.
+      if (_draft == draft) _testResult = result;
     });
   }
 
@@ -161,9 +195,11 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
     List<String>? models;
     String? failure;
     try {
-      models = await widget.viewModel.fetchModels(_draft, apiKey: _typedKey);
+      models = await widget.viewModel.fetchModels(_draft, apiKey: _keyToUse);
     } on SystemLlmException catch (error) {
       failure = errorMessage(error.code);
+    } on Object {
+      failure = 'Could not list the models.';
     }
     if (!mounted) return;
     setState(() => _fetching = false);
@@ -187,7 +223,18 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
     final theme = Theme.of(context);
     final preset = _preset;
     final requiresKey = preset?.requiresApiKey ?? false;
-    final savedKey = widget.viewModel.hasSavedKey(_id);
+    final String keyHelper;
+    if (_hasSavedKey && _removeKey) {
+      keyHelper = 'The saved key will be removed when you save.';
+    } else if (_hasSavedKey && _addressChanged) {
+      keyHelper = 'The saved key is not sent to a new address.';
+    } else if (_hasSavedKey) {
+      keyHelper = 'A key is saved. Leave empty to keep it.';
+    } else if (preset?.apiKeyUrl case final url?) {
+      keyHelper = 'Create one at $url';
+    } else {
+      keyHelper = 'Stored in the device keychain, never in settings.';
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(_isNew ? 'Add provider' : 'Edit provider'),
@@ -253,6 +300,7 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
               errorMaxLines: 3,
             ),
             keyboardType: TextInputType.url,
+            textDirection: TextDirection.ltr,
             autocorrect: false,
             textInputAction: TextInputAction.next,
             onChanged: (_) => setState(() => _testResult = null),
@@ -261,18 +309,17 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
           TextField(
             controller: _apiKey,
             obscureText: _obscureKey,
+            textDirection: TextDirection.ltr,
             autocorrect: false,
             enableSuggestions: false,
             decoration: InputDecoration(
               labelText: requiresKey ? 'API key' : 'API key (optional)',
-              helperText: savedKey
-                  ? 'A key is saved. Leave empty to keep it.'
-                  : preset?.apiKeyUrl == null
-                  ? 'Stored in the device keychain, never in settings.'
-                  : 'Create one at ${preset!.apiKeyUrl}',
+              helperText: keyHelper,
               helperMaxLines: 2,
               errorText: _submitted && _keyMissing
-                  ? 'This provider needs an API key.'
+                  ? (_hasSavedKey && _addressChanged
+                        ? 'Enter the API key again for the new address.'
+                        : 'This provider needs an API key.')
                   : null,
               suffixIcon: IconButton(
                 tooltip: _obscureKey ? 'Show key' : 'Hide key',
@@ -287,8 +334,21 @@ class _ProviderEditorPageState extends State<ProviderEditorPage> {
             onChanged: (_) => setState(() => _testResult = null),
           ),
           const SizedBox(height: 16),
+          if (_hasSavedKey)
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: TextButton(
+                onPressed: () => setState(() {
+                  _removeKey = !_removeKey;
+                  _testResult = null;
+                }),
+                child: Text(_removeKey ? 'Keep saved key' : 'Remove saved key'),
+              ),
+            ),
+          const SizedBox(height: 16),
           TextField(
             controller: _model,
+            textDirection: TextDirection.ltr,
             autocorrect: false,
             decoration: InputDecoration(
               labelText: 'Model',

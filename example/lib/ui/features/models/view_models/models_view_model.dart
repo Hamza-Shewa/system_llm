@@ -30,6 +30,7 @@ class ModelsViewModel extends ChangeNotifier {
   AiAvailability? _onDeviceAvailability;
   final _availability = <String, AiAvailability>{};
   final _checking = <String>{};
+  final _checkRuns = <String, int>{};
   final _withKey = <String>{};
 
   ModelSettings get settings => _settings;
@@ -60,6 +61,8 @@ class ModelsViewModel extends ChangeNotifier {
   String newProviderId() => _newId();
 
   Future<void> load() async {
+    _loadFailed = false;
+    _withKey.clear();
     try {
       _settings = await _repository.load();
       for (final provider in _settings.providers) {
@@ -90,45 +93,74 @@ class ModelsViewModel extends ChangeNotifier {
       _update(_settings.copyWith(selectedProviderId: id));
 
   /// Saves [config]. [apiKey]: null keeps the saved key, empty removes it.
+  ///
+  /// Settings are saved first and the key second; if the key cannot be
+  /// written the settings are put back, so the two never disagree.
   Future<void> saveProvider(ProviderConfig config, {String? apiKey}) async {
-    if (apiKey != null) {
-      if (apiKey.trim().isEmpty) {
-        await _keyStore.delete(config.id);
-        _withKey.remove(config.id);
-      } else {
-        await _keyStore.write(config.id, apiKey.trim());
-        _withKey.add(config.id);
+    final previous = _settings;
+    await _update(_settings.withProvider(config));
+    try {
+      if (apiKey != null) {
+        if (apiKey.trim().isEmpty) {
+          await _keyStore.delete(config.id);
+          _withKey.remove(config.id);
+        } else {
+          await _keyStore.write(config.id, apiKey.trim());
+          _withKey.add(config.id);
+        }
       }
+    } on Object {
+      try {
+        await _update(previous);
+      } on Object catch (error) {
+        debugPrint('Could not restore model settings: $error');
+      }
+      rethrow;
     }
     _availability.remove(config.id);
-    await _update(_settings.withProvider(config));
-    unawaited(check(config));
+    unawaited(check(config).then((_) {}, onError: (_) {}));
   }
 
+  /// Removes provider [id], then its key. A key that cannot be deleted is
+  /// logged: the provider is already gone, so the key is never used again.
   Future<void> deleteProvider(String id) async {
-    await _keyStore.delete(id);
-    _withKey.remove(id);
-    _availability.remove(id);
     await _update(_settings.withoutProvider(id));
+    _availability.remove(id);
+    _withKey.remove(id);
+    try {
+      await _keyStore.delete(id);
+    } on Object catch (error) {
+      debugPrint('Could not delete the saved key of $id: $error');
+    }
   }
 
   /// Checks [config] with [apiKey], or with its saved key when null. The
-  /// result is remembered for saved providers.
+  /// result is remembered only when [config] is exactly the saved entry (an
+  /// edited draft is not), and only from the latest check of that entry.
   Future<AiAvailability> check(ProviderConfig config, {String? apiKey}) async {
-    _checking.add(config.id);
-    notifyListeners();
+    final run = (_checkRuns[config.id] ?? 0) + 1;
+    _checkRuns[config.id] = run;
+    final saved = _settings.providers.contains(config);
+    if (saved) {
+      _checking.add(config.id);
+      notifyListeners();
+    }
     try {
       final result = await _probe.availability(
         config,
         apiKey ?? await _keyStore.read(config.id),
       );
-      if (_settings.providers.any((p) => p.id == config.id)) {
+      if (saved &&
+          _checkRuns[config.id] == run &&
+          _settings.providers.contains(config)) {
         _availability[config.id] = result;
       }
       return result;
     } finally {
-      _checking.remove(config.id);
-      notifyListeners();
+      if (saved && _checkRuns[config.id] == run) {
+        _checking.remove(config.id);
+        notifyListeners();
+      }
     }
   }
 

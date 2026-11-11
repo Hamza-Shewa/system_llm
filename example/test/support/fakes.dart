@@ -101,3 +101,24 @@ class PendingSettingsRepository implements SettingsRepository {
   @override
   Future<void> save(ModelSettings settings) async {}
 }
+
+/// A key store whose reads and writes fail while [failing], as a locked or
+/// broken keychain would.
+class ThrowingKeyStore implements ApiKeyStore {
+  ThrowingKeyStore({this.failing = true, Map<String, String>? keys})
+    : keys = {...?keys};
+
+  bool failing;
+  final Map<String, String> keys;
+
+  @override
+  Future<String?> read(String providerId) async =>
+      failing ? throw StateError('keychain locked') : keys[providerId];
+
+  @override
+  Future<void> write(String providerId, String apiKey) async =>
+      failing ? throw StateError('keychain locked') : keys[providerId] = apiKey;
+
+  @override
+  Future<void> delete(String providerId) async {}
+}
