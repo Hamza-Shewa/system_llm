@@ -167,8 +167,15 @@ final class HttpTransport {
 
     controller = StreamController<SseEvent>(
       onListen: start,
-      onPause: () => upstream?.pause(),
-      onResume: () => upstream?.resume(),
+      // A paused consumer is not a silent server: stop the idle timer.
+      onPause: () {
+        idle?.cancel();
+        upstream?.pause();
+      },
+      onResume: () {
+        resetIdle();
+        upstream?.resume();
+      },
       // The upstream cancel is not awaited: on a silent connection it may
       // only complete when the socket closes, and the caller must not wait.
       onCancel: () {

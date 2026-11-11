@@ -90,13 +90,18 @@ final class OpenAiCompatibleModel extends RemoteLanguageModel {
           'stream': true,
         });
     return _textStream(events, (event) {
-      if (event.data.trim() == '[DONE]') return (text: null, done: true);
+      if (event.data.trim() == '[DONE]') return _end;
       final json = _eventJson(event);
       if (json is Map && json['error'] != null) {
         throw const SystemLlmException(SystemLlmException.generationFailed);
       }
       final content = _at(json, ['choices', 0, 'delta', 'content']);
-      return (text: content is String ? content : null, done: false);
+      final finished = _at(json, ['choices', 0, 'finish_reason']) != null;
+      return (
+        text: content is String ? content : null,
+        complete: finished,
+        done: false,
+      );
     });
   }
 }

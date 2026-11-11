@@ -42,7 +42,9 @@ void main() {
         .withProvider(claude)
         .copyWith(selectedProviderId: 'b');
     final json = settings.toJson();
-    (json['providers']! as List).add({'name': 'broken'});
+    (json['providers']! as List)
+      ..add({'name': 'broken'})
+      ..add({'id': 'z', 'baseUrl': 'https://a.example', 'model': 7});
     final restored = ModelSettings.fromJson(json);
     expect(restored.useThirdParty, isTrue);
     expect(restored.providers, [ollama, claude]);

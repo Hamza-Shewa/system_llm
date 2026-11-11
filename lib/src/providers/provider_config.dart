@@ -9,7 +9,8 @@ enum ProviderProtocol {
 }
 
 /// How an OpenAI-compatible provider is asked for JSON. Anthropic always uses
-/// a forced tool call. Every answer is validated against the schema anyway.
+/// JSON outputs (`output_config.format`). Every answer is validated against
+/// the schema anyway.
 enum StructuredOutputMode {
   /// `response_format: json_schema` with `strict: true`.
   jsonSchema,
@@ -57,26 +58,32 @@ final class ProviderConfig {
   });
 
   /// Restores a config written by [toJson]. Unknown enum values fall back to
-  /// the defaults; a missing `id` or `baseUrl` throws [FormatException].
+  /// the defaults; a missing `id` or `baseUrl`, or a field of the wrong type,
+  /// throws [FormatException].
   factory ProviderConfig.fromJson(Map<String, Object?> json) {
-    final id = json['id'];
-    final baseUrl = json['baseUrl'];
-    if (id is! String || id.isEmpty || baseUrl is! String) {
+    String? text(String key) => switch (json[key]) {
+      null => null,
+      final String value => value,
+      _ => throw FormatException('ProviderConfig.$key must be a string.'),
+    };
+    final id = text('id');
+    final baseUrl = text('baseUrl');
+    if (id == null || id.isEmpty || baseUrl == null) {
       throw const FormatException('ProviderConfig needs id and baseUrl.');
     }
     T pick<T extends Enum>(List<T> values, Object? name, T fallback) =>
         values.where((value) => value.name == name).firstOrNull ?? fallback;
     return ProviderConfig(
       id: id,
-      name: json['name'] as String? ?? '',
+      name: text('name') ?? '',
       protocol: pick(
         ProviderProtocol.values,
         json['protocol'],
         ProviderProtocol.openAiCompatible,
       ),
       baseUrl: baseUrl,
-      model: json['model'] as String? ?? '',
-      presetId: json['presetId'] as String?,
+      model: text('model') ?? '',
+      presetId: text('presetId'),
       structuredOutput: pick(
         StructuredOutputMode.values,
         json['structuredOutput'],

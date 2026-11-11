@@ -176,19 +176,25 @@ sealed class RemoteLanguageModel implements LanguageModel {
   String toString() => '$runtimeType(${config.id}, ${config.host})';
 }
 
-/// What one streamed event contributes: text to append, and whether the
-/// answer is complete.
-typedef _Step = ({String? text, bool done});
+/// What one streamed event contributes: text to append; whether the provider
+/// said the answer is [complete]; and whether to stop reading now ([done]).
+typedef _Step = ({String? text, bool complete, bool done});
+
+const _Step _nothing = (text: null, complete: false, done: false);
+const _Step _end = (text: null, complete: true, done: true);
 
 /// Maps provider events to text chunks. [read] throws [SystemLlmException]
-/// for an error event. Built on a controller rather than `async*` so that
-/// cancelling the subscription aborts the request at once.
+/// for an error event. A stream that closes before the provider marked the
+/// answer complete fails with [SystemLlmException.network], so a cut-off
+/// connection never looks like a finished answer. Built on a controller
+/// rather than `async*` so that cancelling aborts the request at once.
 Stream<String> _textStream(
   Stream<SseEvent> events,
   _Step Function(SseEvent event) read,
 ) {
   StreamSubscription<SseEvent>? subscription;
   late final StreamController<String> controller;
+  var complete = false;
 
   void end() {
     unawaited(subscription?.cancel());
@@ -210,6 +216,7 @@ Stream<String> _textStream(
           }
           final text = step.text;
           if (text != null && text.isNotEmpty) controller.add(text);
+          if (step.complete) complete = true;
           if (step.done) end();
         },
         onError: (Object error, StackTrace stackTrace) {
@@ -218,7 +225,13 @@ Stream<String> _textStream(
           end();
         },
         onDone: () {
-          if (!controller.isClosed) controller.close();
+          if (controller.isClosed) return;
+          if (!complete) {
+            controller.addError(
+              const SystemLlmException(SystemLlmException.network),
+            );
+          }
+          controller.close();
         },
       );
     },

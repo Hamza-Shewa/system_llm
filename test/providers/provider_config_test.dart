@@ -42,6 +42,17 @@ void main() {
     expect(restored.maxTokensField, MaxTokensField.maxTokens);
   });
 
+  test('fromJson rejects wrongly typed fields with FormatException', () {
+    expect(
+      () => ProviderConfig.fromJson({
+        'id': 'x',
+        'baseUrl': 'https://a.example',
+        'name': 5,
+      }),
+      throwsFormatException,
+    );
+  });
+
   test('fromJson rejects entries without id or baseUrl', () {
     expect(
       () => ProviderConfig.fromJson({'baseUrl': 'https://a'}),

@@ -102,12 +102,16 @@ final class AnthropicModel extends RemoteLanguageModel {
         case 'content_block_delta'
             when _at(json, ['delta', 'type']) == 'text_delta':
           final text = _at(json, ['delta', 'text']);
-          return (text: text is String ? text : null, done: false);
+          return (
+            text: text is String ? text : null,
+            complete: false,
+            done: false,
+          );
         case 'message_delta'
             when _at(json, ['delta', 'stop_reason']) == 'refusal':
           throw const SystemLlmException(SystemLlmException.generationFailed);
         case 'message_stop':
-          return (text: null, done: true);
+          return _end;
         case 'error':
           throw SystemLlmException(switch (_at(json, ['error', 'type'])) {
             'rate_limit_error' => SystemLlmException.rateLimited,
@@ -116,7 +120,7 @@ final class AnthropicModel extends RemoteLanguageModel {
             _ => SystemLlmException.generationFailed,
           });
       }
-      return (text: null, done: false);
+      return _nothing;
     });
   }
 

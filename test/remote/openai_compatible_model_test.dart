@@ -313,10 +313,78 @@ void main() {
               ],
             },
             delta('x'),
+            '[DONE]',
           ]),
         ]),
       );
       expect(await stream(model(client)).toList(), ['x']);
+    });
+
+    test(
+      'a stream cut off before the end fails instead of looking done',
+      () async {
+        final client = RecordingClient(
+          (_) async => chunked([
+            sse([delta('Hel')]),
+          ]),
+        );
+        await expectLater(
+          stream(model(client)),
+          emitsInOrder([
+            'Hel',
+            emitsError(
+              isA<SystemLlmException>().having(
+                (e) => e.code,
+                'code',
+                SystemLlmException.network,
+              ),
+            ),
+          ]),
+        );
+      },
+    );
+
+    test('a finish_reason without [DONE] is a complete answer', () async {
+      final client = RecordingClient(
+        (_) async => chunked([
+          sse([
+            delta('ok'),
+            {
+              'choices': [
+                {'delta': {}, 'finish_reason': 'stop'},
+              ],
+            },
+          ]),
+        ]),
+      );
+      expect(await stream(model(client)).toList(), ['ok']);
+    });
+
+    test('a paused subscription does not time out', () async {
+      final body = StreamController<List<int>>();
+      final client = RecordingClient(
+        (_) async => http.StreamedResponse(body.stream, 200),
+      );
+      final received = <String>[];
+      Object? failure;
+      final done = Completer<void>();
+      final subscription =
+          stream(
+            model(client, timeout: const Duration(milliseconds: 50)),
+          ).listen(
+            received.add,
+            onError: (Object e) => failure = e,
+            onDone: done.complete,
+          );
+      await pumpEventQueue();
+      subscription.pause();
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      subscription.resume();
+      body.add(sse([delta('x'), '[DONE]']).codeUnits);
+      await done.future;
+      expect(failure, isNull);
+      expect(received, ['x']);
+      await body.close();
     });
 
     test('maps an HTTP error before streaming', () async {

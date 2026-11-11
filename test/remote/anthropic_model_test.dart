@@ -196,6 +196,25 @@ void main() {
       expect(body['system'], 'Be brief.');
     });
 
+    test('fails when the stream ends without message_stop', () async {
+      final client = RecordingClient(
+        (_) async => chunked([event('content_block_delta', textDelta('Hi'))]),
+      );
+      await expectLater(
+        model(client).streamText(instructions: '', messages: messages),
+        emitsInOrder([
+          'Hi',
+          emitsError(
+            isA<SystemLlmException>().having(
+              (e) => e.code,
+              'code',
+              SystemLlmException.network,
+            ),
+          ),
+        ]),
+      );
+    });
+
     test('maps an error event', () async {
       final client = RecordingClient(
         (_) async => chunked([
