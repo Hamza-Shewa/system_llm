@@ -1,5 +1,9 @@
 /// Bridge to the operating system's built-in language model and on-device
 /// speech recognition (Apple Foundation Models, Android AICore / ML Kit GenAI).
+///
+/// Nothing imported from here sends data off the device. Remote providers
+/// that implement the same [LanguageModel] interface live in
+/// `package:system_llm/providers.dart`.
 library;
 
 import 'dart:async';
@@ -17,6 +21,8 @@ export 'src/ai_availability.dart';
 export 'src/ai_exception.dart';
 export 'src/ai_schema.dart';
 export 'src/device_environment.dart';
+export 'src/language_model.dart';
+export 'src/on_device_model.dart';
 export 'src/platform_interface.dart' show SystemLlmPlatform;
 
 /// Entry point of the plugin.
