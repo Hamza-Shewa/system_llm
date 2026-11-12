@@ -1,4 +1,4 @@
-/// Thrown when a native call fails.
+/// Thrown when a model call fails, on-device or remote.
 ///
 /// [code] is a stable, machine readable value. Provider error text is never
 /// forwarded because it may contain private user input.
@@ -46,6 +46,21 @@ class SystemLlmException implements Exception {
 
   /// A required directory could not be created.
   static const storageError = 'storage_error';
+
+  /// A remote provider rejected the API key (HTTP 401 or 403).
+  static const unauthorized = 'unauthorized';
+
+  /// A remote provider is limiting requests (HTTP 429).
+  static const rateLimited = 'rate_limited';
+
+  /// A remote provider could not be reached.
+  static const network = 'network';
+
+  /// A remote provider does not know the configured model (HTTP 404).
+  static const modelNotFound = 'model_not_found';
+
+  /// A remote provider is selected but incomplete (no model, no API key).
+  static const notConfigured = 'not_configured';
 
   final String code;
 

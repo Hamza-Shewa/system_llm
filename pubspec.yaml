@@ -1,6 +1,6 @@
 name: system_llm
-description: "Flutter bridge to the OS built-in language model (Apple Foundation Models, Android AICore) and on-device speech recognition."
-version: 0.1.1
+description: "Flutter bridge to the OS built-in language model (Apple Foundation Models, Android AICore), on-device speech recognition, and optional third-party providers behind one interface."
+version: 0.2.0
 repository: https://github.com/Hamza-Shewa/system_llm
 issue_tracker: https://github.com/Hamza-Shewa/system_llm/issues
 topics:
@@ -15,6 +15,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.6.0
   plugin_platform_interface: ^2.0.2
 
 dev_dependencies:

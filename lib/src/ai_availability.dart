@@ -1,4 +1,4 @@
-/// Whether the operating system's built-in language model can answer now.
+/// Whether a language model can answer now.
 enum AiAvailability {
   /// The model is installed, enabled and supports the requested language.
   available,
@@ -13,10 +13,17 @@ enum AiAvailability {
   /// The model works, but not for the requested locale.
   unsupportedLanguage,
 
-  /// This device, OS version or platform has no built-in model.
-  unsupported;
+  /// This device, OS version or platform has no built-in model, or a remote
+  /// provider does not serve the configured model.
+  unsupported,
 
-  /// Whether [SystemLlm.generateObject] can be expected to succeed.
+  /// A remote provider could not be reached (offline, wrong URL, server down).
+  unreachable,
+
+  /// A remote provider rejected the API key.
+  unauthorized;
+
+  /// Whether a generation can be expected to succeed.
   bool get canGenerate => this == available;
 
   /// Parses the status string sent by the native side.

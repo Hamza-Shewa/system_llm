@@ -54,4 +54,38 @@ void main() {
     expect(schema.matches([1]), isFalse);
     expect(schema.matches(null), isFalse);
   });
+
+  test('toJsonSchema emits standard JSON Schema with every key required', () {
+    expect(schema.toJsonSchema(), {
+      'type': 'object',
+      'description': 'Answer',
+      'properties': {
+        'ids': {
+          'type': 'array',
+          'description': 'IDs',
+          'maxItems': 8,
+          'items': {'type': 'integer'},
+        },
+        'message': {'type': 'string'},
+        'ok': {'type': 'boolean'},
+      },
+      'required': ['ids', 'message', 'ok'],
+      'additionalProperties': false,
+    });
+  });
+
+  test('toJsonSchema nests objects inside arrays', () {
+    const nested = AiSchema.object({
+      'items': AiSchema.array(AiSchema.object({'name': AiSchema.string()})),
+    });
+    final items = (nested.toJsonSchema()['properties']! as Map)['items'] as Map;
+    expect(items['items'], {
+      'type': 'object',
+      'properties': {
+        'name': {'type': 'string'},
+      },
+      'required': ['name'],
+      'additionalProperties': false,
+    });
+  });
 }

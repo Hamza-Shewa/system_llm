@@ -34,6 +34,10 @@ sealed class AiSchema {
   /// The structure sent over the platform channel.
   Map<String, Object?> toJson();
 
+  /// Standard JSON Schema, as remote providers expect it: every object
+  /// property is required and no other keys are allowed.
+  Map<String, Object?> toJsonSchema();
+
   /// Whether [value], decoded from JSON, has the shape described here.
   ///
   /// Extra object keys are ignored and array lengths are not checked, so
@@ -55,6 +59,18 @@ final class AiObjectSchema extends AiSchema {
       for (final entry in properties.entries)
         {'name': entry.key, ...entry.value.toJson()},
     ],
+  };
+
+  @override
+  Map<String, Object?> toJsonSchema() => {
+    'type': 'object',
+    'description': ?description,
+    'properties': {
+      for (final entry in properties.entries)
+        entry.key: entry.value.toJsonSchema(),
+    },
+    'required': [...properties.keys],
+    'additionalProperties': false,
   };
 
   @override
@@ -82,6 +98,14 @@ final class AiArraySchema extends AiSchema {
   };
 
   @override
+  Map<String, Object?> toJsonSchema() => {
+    'type': 'array',
+    'description': ?description,
+    'maxItems': ?maxItems,
+    'items': items.toJsonSchema(),
+  };
+
+  @override
   bool matches(Object? value) => value is List && value.every(items.matches);
 }
 
@@ -93,6 +117,9 @@ final class AiStringSchema extends AiSchema {
     'type': 'string',
     'description': ?description,
   };
+
+  @override
+  Map<String, Object?> toJsonSchema() => toJson();
 
   @override
   bool matches(Object? value) => value is String;
@@ -108,6 +135,9 @@ final class AiIntegerSchema extends AiSchema {
   };
 
   @override
+  Map<String, Object?> toJsonSchema() => toJson();
+
+  @override
   bool matches(Object? value) => value is int;
 }
 
@@ -119,6 +149,9 @@ final class AiBooleanSchema extends AiSchema {
     'type': 'boolean',
     'description': ?description,
   };
+
+  @override
+  Map<String, Object?> toJsonSchema() => toJson();
 
   @override
   bool matches(Object? value) => value is bool;
