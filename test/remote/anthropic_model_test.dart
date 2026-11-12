@@ -144,6 +144,30 @@ void main() {
       expect(client.requests, hasLength(1));
     });
 
+    test('does not retry an answer cut off at max_tokens', () async {
+      final client = respond(
+        (_) => jsonResponse(message('{"tags":["a"', stop: 'max_tokens')),
+      );
+      expect(
+        (await failure(generate(model(client)))).code,
+        SystemLlmException.invalidResponse,
+      );
+      expect(client.requests, hasLength(1));
+    });
+
+    test('keeps a cut-off answer that still matches the schema', () async {
+      final client = respond(
+        (_) => jsonResponse(
+          message('{"tags":["a"],"maxItems":1}', stop: 'max_tokens'),
+        ),
+      );
+      expect(await generate(model(client)), {
+        'tags': ['a'],
+        'maxItems': 1,
+      });
+      expect(client.requests, hasLength(1));
+    });
+
     test('recognises a prompt that is too long', () async {
       final client = respond(
         (_) => jsonResponse({

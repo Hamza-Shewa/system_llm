@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_llm/system_llm.dart';
@@ -146,6 +148,151 @@ void main() {
           ),
         ),
       );
+    });
+  });
+
+  group('overlapping streams', () {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    const codec = StandardMethodCodec();
+    late int listens;
+    late int cancels;
+
+    // A native side that, unlike MockStreamHandler, can serve several streams.
+    void native(ByteData? envelope) => messenger.handlePlatformMessage(
+      platform.streamChannel.name,
+      envelope,
+      null,
+    );
+    void send(String text) => native(codec.encodeSuccessEnvelope(text));
+    void fail(String code) => native(codec.encodeErrorEnvelope(code: code));
+    void end() => native(null);
+
+    final busy = isA<SystemLlmException>().having(
+      (e) => e.code,
+      'code',
+      SystemLlmException.busy,
+    );
+
+    Stream<String> stream({Duration timeout = const Duration(seconds: 5)}) =>
+        SystemLlm(timeout: timeout).streamText(instructions: 'i', input: 'x');
+
+    setUp(() {
+      SystemLlmPlatform.instance = platform;
+      listens = 0;
+      cancels = 0;
+      messenger.setMockMethodCallHandler(
+        MethodChannel(platform.streamChannel.name),
+        (call) async {
+          if (call.method == 'listen') listens++;
+          if (call.method == 'cancel') cancels++;
+          return null;
+        },
+      );
+    });
+
+    tearDown(
+      () => messenger.setMockMethodCallHandler(
+        MethodChannel(platform.streamChannel.name),
+        null,
+      ),
+    );
+
+    test(
+      'a second listen fails with busy and leaves the first running',
+      () async {
+        final first = <String>[];
+        final firstDone = Completer<void>();
+        stream().listen(first.add, onDone: firstDone.complete);
+        await pumpEventQueue();
+
+        await expectLater(stream(), emitsError(busy));
+        expect(listens, 1);
+        expect(cancels, 0);
+
+        send('Hel');
+        send('lo');
+        end();
+        await firstDone.future;
+        expect(first, ['Hel', 'lo']);
+      },
+    );
+
+    test('checks when listened to, not when created', () async {
+      final later = stream();
+      final running = stream().listen(null);
+      await pumpEventQueue();
+      await expectLater(later, emitsError(busy));
+      expect(listens, 1);
+      await running.cancel();
+    });
+
+    Future<void> startsAgain() async {
+      final second = stream().toList();
+      await pumpEventQueue();
+      expect(listens, 2);
+      send('ok');
+      end();
+      expect(await second, ['ok']);
+    }
+
+    test('a new stream can start after the first ends', () async {
+      final first = stream().join();
+      await pumpEventQueue();
+      end();
+      await first;
+      await startsAgain();
+    });
+
+    test('a new stream can start after the first fails', () async {
+      final first = expectLater(
+        stream(),
+        emitsError(
+          isA<SystemLlmException>().having(
+            (e) => e.code,
+            'code',
+            SystemLlmException.generationFailed,
+          ),
+        ),
+      );
+      await pumpEventQueue();
+      fail('generation_failed');
+      end();
+      await first;
+      await startsAgain();
+    });
+
+    test('a new stream can start after the first is cancelled', () async {
+      final first = stream().listen(null);
+      await pumpEventQueue();
+      await first.cancel();
+      expect(cancels, 1);
+      await startsAgain();
+    });
+
+    test('a new stream can start after the first times out', () async {
+      await expectLater(
+        stream(timeout: const Duration(milliseconds: 10)),
+        emitsError(
+          isA<SystemLlmException>().having(
+            (e) => e.code,
+            'code',
+            SystemLlmException.timeout,
+          ),
+        ),
+      );
+      await pumpEventQueue();
+      expect(cancels, 1);
+      await startsAgain();
+    });
+
+    test('a rejected stream does not release the running one', () async {
+      final first = stream().listen(null);
+      await pumpEventQueue();
+      await expectLater(stream(), emitsError(busy));
+      await expectLater(stream(), emitsError(busy));
+      expect(listens, 1);
+      await first.cancel();
     });
   });
 }

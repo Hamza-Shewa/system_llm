@@ -42,7 +42,7 @@ final class AnthropicModel extends RemoteLanguageModel {
   };
 
   @override
-  Future<Object?> _requestObject({
+  Future<({Object? value, bool truncated})> _requestObject({
     required String instructions,
     required List<AiMessage> messages,
     required AiObjectSchema schema,
@@ -77,7 +77,10 @@ final class AnthropicModel extends RemoteLanguageModel {
               .whereType<String>()
               .join()
         : null;
-    return _decodeAnswer(text);
+    return (
+      value: _decodeAnswer(text),
+      truncated: _at(json, ['stop_reason']) == 'max_tokens',
+    );
   }
 
   @override

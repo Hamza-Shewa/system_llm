@@ -83,6 +83,9 @@ public final class SystemLlmPlugin: NSObject, FlutterPlugin {
   private var transcript = ""
   private var hasAudioTap = false
   private var speechID = UUID()
+  /// The host app's audio session settings, restored when speech ends.
+  private var savedAudio: (category: AVAudioSession.Category, mode: AVAudioSession.Mode,
+    options: AVAudioSession.CategoryOptions)?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "system_llm", binaryMessenger: registrar.messenger())
@@ -282,6 +285,9 @@ public final class SystemLlmPlugin: NSObject, FlutterPlugin {
   private func startSpeech(_ recognizer: SFSpeechRecognizer, id: UUID) {
     do {
       let audio = AVAudioSession.sharedInstance()
+      if savedAudio == nil {
+        savedAudio = (audio.category, audio.mode, audio.categoryOptions)
+      }
       try audio.setCategory(.record, mode: .measurement)
       try audio.setActive(true)
       let request = SFSpeechAudioBufferRecognitionRequest()
@@ -323,6 +329,11 @@ public final class SystemLlmPlugin: NSObject, FlutterPlugin {
     if hasAudioTap { audioEngine.inputNode.removeTap(onBus: 0); hasAudioTap = false }
     speechRequest?.endAudio()
     speechTask?.cancel()
+    if let saved = savedAudio {
+      savedAudio = nil
+      // Best effort: a restore failure must not turn a transcript into an error.
+      try? AVAudioSession.sharedInstance().setCategory(saved.category, mode: saved.mode, options: saved.options)
+    }
     speechTask = nil
     speechRequest = nil
     if pending != nil { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }

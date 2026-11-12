@@ -28,6 +28,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -152,7 +153,8 @@ class SystemLlmPlugin :
         val input = args["input"] as? String ?: ""
         val maxTokens = (args["maxTokens"] as? Number)?.toInt() ?: 512
         generationIsStream = true
-        generation = activeScope.launch {
+        // Lazy, so `generation` is set before Main.immediate runs the body.
+        val job = activeScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val status = modelStatus()
                 if (status != "available") { fail(status); return@launch }
@@ -177,9 +179,12 @@ class SystemLlmPlugin :
                 // Do not forward provider error text: it may include private input.
                 fail("generation_failed")
             } finally {
-                generationIsStream = false
+                // A cancelled job may unwind after a newer request started.
+                if (generation === coroutineContext[Job]) generationIsStream = false
             }
         }
+        generation = job
+        job.start()
     }
 
     override fun onCancel(arguments: Any?) {
@@ -221,7 +226,8 @@ class SystemLlmPlugin :
             result.error("invalid_request", null, null); return
         }
         val instructions = StructuredOutput.instructions(call.argument<String>("instructions") ?: "", schema)
-        val input = call.argument<String>("input") ?: ""
+        val input IsStream = false
+        generation= call.argument<String>("input") ?: ""
         val maxTokens = call.argument<Int>("maxTokens") ?: 512
         val activeScope = scope ?: run { result.error("unsupported", null, null); return }
         generation = activeScope.launch {

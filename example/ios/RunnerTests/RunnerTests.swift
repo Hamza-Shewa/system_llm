@@ -7,23 +7,42 @@ import XCTest
 
 @testable import system_llm
 
-// This demonstrates a simple unit test of the Swift portion of this plugin's implementation.
-//
-// See https://developer.apple.com/documentation/xctest for more information about using XCTest.
-
+/// Calls that need neither the language model nor the microphone.
+@MainActor
 class RunnerTests: XCTestCase {
 
-  func testGetPlatformVersion() {
+  private func call(_ method: String, _ arguments: Any? = nil) -> Any? {
     let plugin = SystemLlmPlugin()
-
-    let call = FlutterMethodCall(methodName: "getPlatformVersion", arguments: [])
-
-    let resultExpectation = expectation(description: "result block must be called.")
-    plugin.handle(call) { result in
-      XCTAssertEqual(result as! String, "iOS " + UIDevice.current.systemVersion)
-      resultExpectation.fulfill()
+    var answer: Any?
+    let answered = expectation(description: "\(method) answers")
+    plugin.handle(FlutterMethodCall(methodName: method, arguments: arguments)) { result in
+      answer = result
+      answered.fulfill()
     }
-    waitForExpectations(timeout: 1)
+    wait(for: [answered], timeout: 5)
+    return answer
   }
 
+  func testUnknownMethodIsNotImplemented() {
+    XCTAssertTrue(call("getPlatformVersion") as AnyObject === FlutterMethodNotImplemented)
+  }
+
+  func testAvailabilityAnswersAKnownStatus() {
+    let status = call("availability", ["locale": "en"]) as? String
+    let known = ["available", "unsupported_language", "disabled", "model_not_ready", "unsupported"]
+    XCTAssertTrue(known.contains(status ?? ""), "unexpected status \(String(describing: status))")
+  }
+
+  func testEnvironmentRejectsAPathAsDirectoryName() {
+    let error = call("environment", ["directories": ["a/b"]]) as? FlutterError
+    XCTAssertEqual(error?.code, "storage_error")
+    XCTAssertNil(error?.message)
+  }
+
+  func testEnvironmentReportsCreatedDirectories() {
+    let answer = call("environment", ["directories": ["runner_tests"]]) as? [String: Any]
+    XCTAssertEqual(answer?["supported"] as? Bool, true)
+    let paths = answer?["directories"] as? [String: String]
+    XCTAssertNotNil(paths?["runner_tests"])
+  }
 }

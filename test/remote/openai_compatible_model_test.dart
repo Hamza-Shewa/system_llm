@@ -17,10 +17,11 @@ void main() {
   );
   const messages = [AiMessage.user('hi'), AiMessage.assistant('hello')];
 
-  Map<String, Object?> completion(Object? content) => {
+  Map<String, Object?> completion(Object? content, {String? finish}) => {
     'choices': [
       {
         'message': {'role': 'assistant', 'content': content},
+        'finish_reason': ?finish,
       },
     ],
   };
@@ -169,6 +170,27 @@ void main() {
         SystemLlmException.invalidResponse,
       );
       expect(client.requests, hasLength(2));
+    });
+
+    test('does not retry an answer cut off at the token limit', () async {
+      final client = respond(
+        (_) => jsonResponse(completion('{"tags":["a",', finish: 'length')),
+      );
+      expect(
+        (await failure(generate(model(client)))).code,
+        SystemLlmException.invalidResponse,
+      );
+      expect(client.requests, hasLength(1));
+    });
+
+    test('keeps a cut-off answer that still matches the schema', () async {
+      final client = respond(
+        (_) => jsonResponse(completion('{"tags":["a"]}', finish: 'length')),
+      );
+      expect(await generate(model(client)), {
+        'tags': ['a'],
+      });
+      expect(client.requests, hasLength(1));
     });
 
     test('maps HTTP failures to stable codes', () async {

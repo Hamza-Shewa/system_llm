@@ -34,7 +34,7 @@ final class OpenAiCompatibleModel extends RemoteLanguageModel {
   };
 
   @override
-  Future<Object?> _requestObject({
+  Future<({Object? value, bool truncated})> _requestObject({
     required String instructions,
     required List<AiMessage> messages,
     required AiObjectSchema schema,
@@ -69,7 +69,10 @@ final class OpenAiCompatibleModel extends RemoteLanguageModel {
           'response_format': {'type': 'json_object'},
       },
     );
-    return _decodeAnswer(_at(json, ['choices', 0, 'message', 'content']));
+    return (
+      value: _decodeAnswer(_at(json, ['choices', 0, 'message', 'content'])),
+      truncated: _at(json, ['choices', 0, 'finish_reason']) == 'length',
+    );
   }
 
   @override

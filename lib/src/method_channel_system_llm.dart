@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -36,18 +38,62 @@ class MethodChannelSystemLlm extends SystemLlmPlatform {
     'maxTokens': maxTokens,
   });
 
+  /// Whether a stream is listening on [streamChannelName]. The channel has one
+  /// handler per name, and a second listen would cancel the first natively.
+  static bool _streaming = false;
+
   @override
   Stream<String> streamText({
     required String instructions,
     required String input,
     required String locale,
     required int maxTokens,
-  }) => streamChannel.receiveBroadcastStream({
-    'instructions': instructions,
-    'input': input,
-    'locale': locale,
-    'maxTokens': maxTokens,
-  }).cast<String>();
+  }) {
+    StreamSubscription<String>? subscription;
+    late final StreamController<String> controller;
+
+    void release() {
+      if (subscription == null) return;
+      subscription = null;
+      _streaming = false;
+    }
+
+    controller = StreamController<String>(
+      onListen: () {
+        if (_streaming) {
+          controller
+            ..addError(PlatformException(code: 'busy'))
+            ..close();
+          return;
+        }
+        _streaming = true;
+        subscription = streamChannel
+            .receiveBroadcastStream({
+              'instructions': instructions,
+              'input': input,
+              'locale': locale,
+              'maxTokens': maxTokens,
+            })
+            .cast<String>()
+            .listen(
+              controller.add,
+              onError: controller.addError,
+              onDone: () {
+                release();
+                controller.close();
+              },
+            );
+      },
+      onPause: () => subscription?.pause(),
+      onResume: () => subscription?.resume(),
+      onCancel: () {
+        final running = subscription;
+        release();
+        return running?.cancel();
+      },
+    );
+    return controller.stream;
+  }
 
   @override
   Future<bool?> speechAvailable(String locale) =>

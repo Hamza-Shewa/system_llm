@@ -143,7 +143,7 @@ sealed class RemoteLanguageModel implements LanguageModel {
     _checkMessages(messages);
     // One retry, as on Android: models occasionally break the shape.
     for (var attempt = 0; attempt < 2; attempt++) {
-      final value = await _requestObject(
+      final (:value, :truncated) = await _requestObject(
         instructions: instructions,
         messages: messages,
         schema: schema,
@@ -152,13 +152,15 @@ sealed class RemoteLanguageModel implements LanguageModel {
       if (value is Map && schema.matches(value)) {
         return Map<String, Object?>.from(value);
       }
+      // The same limit would cut the retry off again.
+      if (truncated) break;
     }
     throw const SystemLlmException(SystemLlmException.invalidResponse);
   }
 
-  /// One structured request; the decoded object, or null when the answer is
-  /// not JSON.
-  Future<Object?> _requestObject({
+  /// One structured request: the decoded object, or null when the answer is
+  /// not JSON, and whether the provider stopped it at the token limit.
+  Future<({Object? value, bool truncated})> _requestObject({
     required String instructions,
     required List<AiMessage> messages,
     required AiObjectSchema schema,
